@@ -6,7 +6,7 @@ torch.set_grad_enabled(False)
 import argparse
 from pathlib import Path
 import yaml
-import os, sys, importlib, shutil
+import os, sys, importlib
 import numpy as np
 from tqdm import tqdm
 import ast
@@ -90,10 +90,8 @@ def test(args):
     cfg.model.params.ckpt_path = args.ckpt_path
     cfg.model.params.ignore_keys = ['epoch_for_strategy', 'lmbda_idx', 'lmbda_list']
     out_dir = Path(args.save_dir)
-    img_dir = out_dir / "recon"
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    img_dir.mkdir(parents=True, exist_ok=False)
+    img_dir = out_dir / "results"
+    img_dir.mkdir(parents=True, exist_ok=True)
 
     # set the model
     model = instantiate_from_config(cfg.model)

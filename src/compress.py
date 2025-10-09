@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 import struct
 import yaml
-import os, sys, importlib, shutil
+import os, sys, importlib
 from PIL import Image
 import numpy as np
 from tqdm import tqdm
@@ -219,20 +219,16 @@ def test(args):
     cfg.model.params.ckpt_path = args.ckpt_path
     cfg.model.params.ignore_keys = ['epoch_for_strategy', 'lmbda_idx', 'lmbda_list']
 
-    out_dir = args.save_dir
-    img_dir = os.path.join(out_dir, "recon")
-    bit_dir = os.path.join(out_dir, "bitstreams")
+    out_dir   = args.save_dir
+    bit_dir   = os.path.join(out_dir, "bitstreams")
     index_dir = os.path.join(out_dir, "faiss")
-    clip_dir = os.path.join(out_dir, "clip_vecs")
+    clip_dir  = os.path.join(out_dir, "clip_vecs")
 
     if (not using_ddp) or (local_rank == 0):
-        if os.path.exists(out_dir):
-            shutil.rmtree(out_dir)
-        os.makedirs(out_dir, exist_ok=False)
-        os.makedirs(img_dir, exist_ok=True)
-        os.makedirs(bit_dir, exist_ok=True)
+        os.makedirs(out_dir,   exist_ok=True)
+        os.makedirs(bit_dir,   exist_ok=True)
         os.makedirs(index_dir, exist_ok=True)
-        os.makedirs(clip_dir, exist_ok=True)
+        os.makedirs(clip_dir,  exist_ok=True)
     if using_ddp:
         dist.barrier()
 
