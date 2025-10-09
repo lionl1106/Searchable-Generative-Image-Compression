@@ -11,7 +11,7 @@ A neural image compression codec that makes bitstreams searchable (by CLIP) and 
 
 0) Prerequisites
 
-Download [the model weight](https://huggingface.co/Hsuan-Wei/model/tree/main)
+Download [the model weight](https://huggingface.co/Hsuan-Wei/model/tree/main) and put it into `/checkpoints`
 
 ```bash
 conda create -n test python=3.12
