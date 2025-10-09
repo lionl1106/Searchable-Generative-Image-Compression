@@ -879,7 +879,7 @@ class Codec(pl.LightningModule):
 
 
     @torch.no_grad()
-    def decode_only(self, z_bit_stream, h_bit_stream, img_shape, feat_shape, stack_shape, token_length, z_indices_shape):
+    def decode_only(self, z_bit_stream, h_bit_stream, img_shape, feat_shape, stack_shape, token_length, z_indices_shape, clip_stream, clip_meta):
         if not self.is_set_torchac:
             self.set_torchac()
         # decode z

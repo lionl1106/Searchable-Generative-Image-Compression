@@ -104,7 +104,7 @@ def test(args):
         enc_result, header = unpack_c2df(fp)
         
         enc_result = sanitize_enc_result_types(enc_result)
-        enc_result = filter_kwargs_for_fn(model.decode_only, enc_result)
+        # enc_result = filter_kwargs_for_fn(model.decode_only, enc_result)
 
         img_rec_padded = model.decode_only(**enc_result)
         img_rec = torch.nn.functional.pad(
