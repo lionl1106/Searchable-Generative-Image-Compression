@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="night">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clip + Learned Image Compression Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" />
+  <style>
+    #previewDWrapper, #previewCWrapper { min-height: 240px; }
+    .fade-in { animation: fade 200ms ease-out; }
+    @keyframes fade { from {opacity:0} to {opacity:1} }
+    .dropzone { cursor: pointer; }
+  </style>
+</head>
+<body class="min-h-screen bg-base-100 text-base-content">
+  <div class="navbar bg-base-200 sticky top-0 z-10">
+    <div class="flex-1 px-2 text-lg font-semibold">Searchable Generative Image Compression</div>
+    <div class="flex-none">
+      <label class="swap swap-rotate mx-2 cursor-pointer" title="切換主題">
+        <input id="themeToggle" type="checkbox" />
+        <svg class="swap-on fill-current w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M21.64 13a1 1 0 0 0-1.05-.14 8 8 0 0 1-10.45-10.45A1 1 0 0 0 9 1.36 10 10 0 1 0 22 14a1 1 0 0 0-.36-1z"/>
+        </svg>
+        <svg class="swap-off fill-current w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M5 12a7 7 0 1 0 14 0A7 7 0 0 0 5 12zm7-9a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V4a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1zM4 11H3a1 1 0 0 0 0 2h1a1 1 0 1 0 0-2zm17 0h-1a1 1 0 1 0 0 2h1a1 1 0 1 0 0-2zM6.22 5.64a1 1 0 0 1 1.41 0l.71.7a1 1 0 1 1-1.41 1.42l-.71-.71a1 1 0 0 1 0-1.41zm9.44 9.44a1 1 0 0 1 1.41 0l.71.71a1 1 0 1 1-1.41 1.41l-.71-.7a1 1 0 0 1 0-1.42zM6.22 18.36a1 1 0 0 1 0-1.41l.71-.71a1 1 0 1 1 1.41 1.41l-.71.71a1 1 0 0 1-1.41 0zm9.44-9.44a1 1 0 0 1 0-1.41l.71-.71a1 1 0 1 1 1.41 1.41l-.71.71a1 1 0 0 1-1.41 0z"/>
+        </svg>
+      </label>
+    </div>
+  </div>
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <article class="card bg-base-100/70 backdrop-blur-xl shadow-xl border border-base-content/10 hover:shadow-2xl transition">
+        <div class="card-body space-y-5">
+          <header class="flex items-center gap-3">
+            <div class="btn btn-circle btn-primary btn-lg pointer-events-none">⤓</div>
+            <div>
+              <h3 class="card-title">Compress → 產出 .c2df</h3>
+              <p class="text-sm opacity-70">選擇影像並上傳，底下會先顯示該影像；壓縮完成後可手動下載 bitstream</p>
+            </div>
+          </header>
+          <div id="dzCompress" class="dropzone rounded-2xl p-6 text-center border border-base-content/20 hover:bg-primary/10 transition">
+            <p class="font-medium">拖放影像到此或點擊選擇</p>
+            <p class="text-sm opacity-60">支援：.png / .jpg / .jpeg / .webp / .bmp</p>
+            <input id="fileCompress" type="file" accept="image/*" class="hidden" />
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="btnCompress" class="btn btn-primary"><span class="loading loading-spinner hidden" id="spinC"></span>開始壓縮</button>
+            <button id="btnClearC" class="btn btn-ghost">清除</button>
+            <a id="btnDownloadC" class="btn btn-outline btn-disabled" aria-disabled="true" tabindex="-1">下載 bitstream</a>
+          </div>
+          <div id="progC" class="hidden">
+            <progress id="barC" class="progress progress-info w-full" value="0" max="100"></progress>
+            <div class="mt-1 text-right text-sm" id="txtC">0%</div>
+          </div>
+          <div id="previewCWrapper" class="hidden space-y-3">
+            <div class="text-sm opacity-70">上傳影像預覽</div>
+            <div id="previewC" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+          </div>
+          <div id="resultC" class="hidden"></div>
+        </div>
+      </article>
+      <article class="card bg-base-100/70 backdrop-blur-xl shadow-xl border border-base-content/10 hover:shadow-2xl transition">
+        <div class="card-body space-y-5">
+          <header class="flex items-center gap-3">
+            <div class="btn btn-circle btn-secondary btn-lg pointer-events-none">↯</div>
+            <div>
+              <h3 class="card-title">Decompress → 還原 PNG</h3>
+              <p class="text-sm opacity-70">選擇 <code>.c2df</code> 檔，上方會先顯示解碼預覽；一定要手動按「下載結果」才會下載</p>
+            </div>
+          </header>
+          <div id="dzDecompress" class="dropzone rounded-2xl p-6 text-center border border-base-content/20 hover:bg-secondary/10 transition">
+            <p class="font-medium">拖放 <code>.c2df</code> 到此或點擊選擇</p>
+            <p class="text-sm opacity-60">只接受：.c2df</p>
+            <input id="fileDecompress" type="file" accept=".c2df" class="hidden" />
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="btnDecompress" class="btn btn-secondary"><span class="loading loading-spinner hidden" id="spinD"></span>開始還原</button>
+            <button id="btnClearD" class="btn btn-ghost">清除</button>
+            <a id="btnDownloadD" class="btn btn-primary btn-disabled" aria-disabled="true" tabindex="-1">下載結果</a>
+          </div>
+          <div id="progD" class="hidden">
+            <progress id="barD" class="progress progress-success w-full" value="0" max="100"></progress>
+            <div class="mt-1 text-right text-sm" id="txtD">0%</div>
+          </div>
+          <div id="previewDWrapper" class="hidden space-y-3">
+            <div class="text-sm opacity-70">還原預覽</div>
+            <div id="previewD" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+          </div>
+          <div id="resultD" class="hidden"></div>
+        </div>
+      </article>
+    </section>
+    <aside class="mt-8 grid md:grid-cols-2 gap-4">
+      <div class="card bg-base-100/50 border border-base-content/10">
+        <div class="card-body p-6">
+          <h3 class="card-title">提示</h3>
+          <ul class="list-disc pl-5 opacity-80 space-y-1 text-sm">
+            <li>壓縮回傳 <code>.c2df</code>；還原若為多張圖，會以 ZIP 回傳。</li>
+            <li>還原：先預覽，再按「下載結果」。ZIP 會預覽前幾張縮圖。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card bg-base-100/50 border border-base-content/10">
+        <div class="card-body p-6">
+          <h3 class="card-title">系統狀態</h3>
+          <div id="status" class="text-sm opacity-80">待命中…</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+  <script>
+  (function initTheme(){
+    const saved = localStorage.getItem('theme');
+    const theme = saved || 'night';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.getElementById('themeToggle').checked = (theme === 'cupcake');
+  })();
+  document.getElementById('themeToggle').addEventListener('change', (e) => {
+    const next = e.target.checked ? 'cupcake' : 'night';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+  });
+  const ENDPOINTS = { compress: '/compress', decompress: '/decompress' };
+  const $ = (sel) => document.querySelector(sel);
+  const prettyBytes = (n) => { if(n==null) return ''; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(n)/Math.log(1024)); return `${(n/1024**i).toFixed(1)} ${u[i]}`; };
+  const filenameFromCD = (xhr) => {
+    const cd = xhr.getResponseHeader('Content-Disposition') || '';
+    const s1 = /filename\\*=UTF-8''([^;]+)/i.exec(cd);
+    if (s1) return decodeURIComponent(s1[1]);
+    const s2 = /filename="?([^\\\";]+)"?/i.exec(cd);
+    return s2 ? s2[1] : 'download';
+  };
+  function bindDrop(boxSel, inputSel, exts) {
+    const box=$(boxSel), input=$(inputSel);
+    const openPicker=()=>input.click();
+    box.addEventListener('click', openPicker);
+    box.addEventListener('dragover', e=>{ e.preventDefault(); box.classList.add('dragover'); });
+    box.addEventListener('dragleave', ()=> box.classList.remove('dragover'));
+    box.addEventListener('drop', e=>{
+      e.preventDefault(); box.classList.remove('dragover');
+      const f=e.dataTransfer.files?.[0]; if(!f) return;
+      if (exts && !exts.some(ext => f.name.toLowerCase().endsWith(ext))) { alert('不支援的檔案類型'); return; }
+      input.files = e.dataTransfer.files;
+      box.querySelector('p').innerHTML = `<span class="text-primary">已選擇：</span> ${f.name} <span class="opacity-60 text-xs">(${prettyBytes(f.size)})</span>`;
+      if (input.id === 'fileCompress') showCompressPreview(f);
+    });
+    input.addEventListener('change', ()=>{
+      const f=input.files?.[0]; if(!f) return;
+      if (exts && !exts.some(ext => f.name.toLowerCase().endsWith(ext))) { alert('不支援的檔案類型'); input.value=''; return; }
+      box.querySelector('p').innerHTML = `<span class="text-primary">已選擇：</span> ${f.name} <span class="opacity-60 text-xs">(${prettyBytes(f.size)})</span>`;
+      if (input.id === 'fileCompress') showCompressPreview(f);
+    });
+  }
+  bindDrop('#dzCompress', '#fileCompress', ['.png','.jpg','.jpeg','.webp','.bmp']);
+  bindDrop('#dzDecompress', '#fileDecompress', ['.c2df']);
+  function setDownloadDisabled(a, disabled) {
+    if (disabled) {
+      a.classList.add('btn-disabled');
+      a.setAttribute('aria-disabled', 'true');
+      a.setAttribute('tabindex', '-1');
+      a.removeAttribute('href');
+      a.removeAttribute('download');
+    } else {
+      a.classList.remove('btn-disabled');
+      a.removeAttribute('aria-disabled');
+      a.removeAttribute('tabindex');
+    }
+  }
+  function showCompressPreview(file){
+    const wrap = $('#previewCWrapper');
+    const grid = $('#previewC');
+    grid.innerHTML = '';
+    const url = URL.createObjectURL(file);
+    const img = new Image(); img.src=url; img.alt='上傳影像'; img.className='rounded-xl shadow bg-base-300 object-cover w-full aspect-square fade-in';
+    grid.appendChild(img);
+    wrap.classList.remove('hidden');
+    img.onload = ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000);
+  }
+  async function postFile(kind) {
+    const isC = kind==='compress';
+    const inp = isC? $('#fileCompress') : $('#fileDecompress');
+    const prog= isC? $('#progC')        : $('#progD');
+    const bar = isC? $('#barC')         : $('#barD');
+    const txt = isC? $('#txtC')         : $('#txtD');
+    const panel = isC? $('#resultC')    : $('#resultD');
+    if (!inp.files?.length) { alert('請先選擇檔案'); return; }
+    panel.classList.add('hidden');
+    setDownloadDisabled(isC ? $('#btnDownloadC') : $('#btnDownloadD'), true);
+    const data = new FormData(); data.append('file', inp.files[0]);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', ENDPOINTS[kind]);
+    xhr.responseType = 'blob';
+    xhr.upload.onprogress = (e)=> {
+      if (e.lengthComputable) {
+        const p = Math.round(e.loaded/e.total*100);
+        prog.classList.remove('hidden');
+        bar.value = p; txt.textContent = `${p}% · ${prettyBytes(e.loaded)} / ${prettyBytes(e.total)}`;
+      }
+    };
+    xhr.onload = async () => {
+      prog.classList.add('hidden');
+      if (xhr.status !== 200) {
+        const fr = new FileReader();
+        fr.onload = ()=> { try { const j=JSON.parse(fr.result); alert(`錯誤：${j.detail||xhr.statusText}`); } catch { alert(`伺服器錯誤：HTTP ${xhr.status}`); } };
+        fr.readAsText(xhr.response); return;
+      }
+      const blob = xhr.response;
+      const ctype = xhr.getResponseHeader('Content-Type') || 'application/octet-stream';
+      const name  = filenameFromCD(xhr) || (isC? 'output.c2df':'output');
+      const url   = URL.createObjectURL(blob);
+      if (isC) {
+        const a = $('#btnDownloadC');
+        a.href = url;
+        a.download = name.endsWith('.c2df') ? name : (name + '.c2df');
+        setDownloadDisabled(a, false);
+        a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
+        $('#status').textContent = `壓縮完成，請手動下載：${a.download}`;
+        panel.classList.remove('hidden');
+        panel.innerHTML = `<div class="alert alert-success">壓縮完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>`;
+      } else {
+        const wrap = $('#previewDWrapper');
+        const grid = $('#previewD');
+        grid.innerHTML='';
+        wrap.classList.remove('hidden');
+        const a = $('#btnDownloadD');
+        if (ctype.startsWith('image/')) {
+          const img = new Image(); img.src=url; img.alt='還原預覽'; img.className='rounded-xl shadow bg-base-300 object-contain w-full aspect-square fade-in';
+          grid.appendChild(img);
+          a.href = url;
+          a.download = name.endsWith('.png') ? name : (name + '.png');
+          setDownloadDisabled(a, false);
+          a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
+          $('#status').textContent = '還原完成：預覽就緒（請手動下載）';
+        } else if (ctype.includes('zip')) {
+          try {
+            const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+            const arr = await blob.arrayBuffer();
+            const zip = await JSZip.loadAsync(arr);
+            const entries = Object.keys(zip.files).filter(k=>/\\.(png|jpe?g|webp|bmp)$/i.test(k));
+            for (let i=0;i<Math.min(entries.length,6);i++){
+              const file = await zip.files[entries[i]].async('blob');
+              const u = URL.createObjectURL(file);
+              const img = new Image(); img.src=u; img.className='rounded-xl shadow object-cover w-full aspect-square fade-in'; img.loading='lazy';
+              grid.appendChild(img);
+            }
+            a.href = url;
+            a.download = name.endsWith('.zip') ? name : (name + '.zip');
+            setDownloadDisabled(a, false);
+            a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
+            $('#status').textContent = `還原完成：ZIP（共 ${entries.length} 張，已預覽 ${Math.min(entries.length,6)} 張）`;
+          } catch (e) {
+            grid.innerHTML = '<div class="alert alert-warning">ZIP 無法預覽，但仍可下載。</div>';
+            a.href = url;
+            a.download = name.endsWith('.zip') ? name : (name + '.zip');
+            setDownloadDisabled(a, false);
+            a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
+          }
+        } else {
+          grid.innerHTML = '<div class="alert alert-warning">未知的回應格式，無法預覽，但仍可下載。</div>';
+          a.href = url;
+          a.download = name;
+          setDownloadDisabled(a, false);
+          a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
+        }
+        panel.classList.remove('hidden');
+        panel.innerHTML = `<div class="alert alert-success">還原完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>`;
+      }
+    };
+    xhr.onerror = ()=> { prog.classList.add('hidden'); alert('網路錯誤或伺服器無回應'); };
+    xhr.send(data);
+    $('#status').textContent = isC? '壓縮中…' : '還原中…';
+  }
+  document.getElementById('btnCompress').addEventListener('click', ()=> postFile('compress'));
+  document.getElementById('btnDecompress').addEventListener('click', ()=> postFile('decompress'));
+  document.getElementById('btnClearC').addEventListener('click', ()=>{
+    $('#fileCompress').value=''; $('#dzCompress p').innerHTML='拖放影像到此或點擊選擇';
+    $('#resultC').classList.add('hidden'); $('#previewCWrapper').classList.add('hidden'); $('#previewC').innerHTML='';
+    setDownloadDisabled($('#btnDownloadC'), true);
+  });
+  document.getElementById('btnClearD').addEventListener('click', ()=>{
+    $('#fileDecompress').value=''; $('#dzDecompress p').innerHTML='拖放 <code>.c2df</code> 到此或點擊選擇';
+    $('#resultD').classList.add('hidden'); $('#previewDWrapper').classList.add('hidden'); $('#previewD').innerHTML='';
+    setDownloadDisabled($('#btnDownloadD'), true);
+  });
+  document.getElementById('btnDownloadD').addEventListener('click', (e) => {
+    if (e.currentTarget.getAttribute('aria-disabled') === 'true') e.preventDefault();
+  });
+  document.getElementById('btnDownloadC').addEventListener('click', (e) => {
+    if (e.currentTarget.getAttribute('aria-disabled') === 'true') e.preventDefault();
+  });
+  </script>
+</body>
+</html>
