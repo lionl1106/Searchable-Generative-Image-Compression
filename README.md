@@ -49,6 +49,18 @@ python compress.py \
     --gpu_idx 0
 ```
 
+4) Decompress
+
+```bash
+cd src
+python decompress.py \
+    --base_config ./config/config_test.yaml \
+    --ckpt_path ../checkpoints/model.ckpt \
+    --dataset_dir "../IO/bitstreams" \
+    --save_dir "../IO" \
+    --gpu_idx 0
+```
+
 ## License
 - This project is released under the Apache-2.0 License.
 
