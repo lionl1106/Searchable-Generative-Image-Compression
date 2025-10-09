@@ -61,6 +61,14 @@ python decompress.py \
     --gpu_idx 0
 ```
 
+5) Interative web service
+
+```bash
+python -m uvicorn webapp:app --host 127.0.0.1 --port 8000
+```
+
+then open http://localhost:8000/
+
 ## License
 - This project is released under the Apache-2.0 License.
 
