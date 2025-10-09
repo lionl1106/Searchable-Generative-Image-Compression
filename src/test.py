@@ -1,5 +1,5 @@
 # ---------- import packages ----------
-import inspect, io, ast
+import inspect, ast
 import faiss
 import zstandard as zstd
 import open_clip
@@ -13,7 +13,6 @@ import yaml
 import os, sys, importlib, shutil
 from PIL import Image
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 
 import torch.distributed as dist
@@ -29,105 +28,7 @@ from torchvision import transforms
 from omegaconf import OmegaConf
 
 from entropy.compression_model import get_padding_size
-import io, json
-
-_T_BYTES  = 0
-_T_STR    = 1
-_T_INT    = 2
-_T_FLOAT  = 3
-_T_JSON   = 4
-_T_NP     = 5
-_T_NONE   = 6
-_T_BOOL   = 7
-
-def _to_numpy(x):
-    if isinstance(x, np.ndarray):
-        return x
-    if isinstance(x, torch.Tensor):
-        return x.detach().cpu().contiguous().numpy()
-    return None
-
-def _dump_entry(key: str, val):
-    k = key.encode('utf-8')
-    if key in {"z_indeices_shape", "h_indices_shape", "y_shape", "x_shape"} or key.endswith("_shape"):
-        arr = np.asarray(val, dtype = np.int32)
-        dtype_s = arr.dtype.str.encode('utf-8')
-        data_b = arr.tobytes(order='C')
-        payload = []
-        payload.append(struct.pack("<B", len(dtype_s))); payload.append(dtype_s)
-        payload.append(struct.pack("<B", arr.ndim))
-        for d in arr.shape:
-            payload.append(struct.pack("<I", int(d)))
-        payload.append(struct.pack("<I", len(data_b))); payload.append(data_b)
-        return k, _T_NP, b"".join(payload)
-        
-        # return k, _T_NP, pack_numpy(arr)
-    if key in {"token_length", "num_tokens", "n_tokens"} or key.endswith("_length"):
-        return k, _T_INT, struct.pack("<q", int(val))
-    
-    # None / bool / int / float / bytes / str
-    if val is None:
-        return k, _T_NONE, b""
-    if isinstance(val, bool):
-        return k, _T_BOOL, struct.pack("<B", 1 if val else 0)
-    if isinstance(val, int):
-        return k, _T_INT, struct.pack("<q", val) 
-    if isinstance(val, float):
-        return k, _T_FLOAT, struct.pack("<d", val) 
-    if isinstance(val, (bytes, bytearray, memoryview)):
-        b = bytes(val)
-        return k, _T_BYTES, struct.pack("<I", len(b)) + b
-    if isinstance(val, str):
-        b = val.encode('utf-8')
-        return k, _T_STR, struct.pack("<I", len(b)) + b
-
-    # numpy / torch.Tensor
-    arr = _to_numpy(val)
-    if arr is not None:
-        dtype_s = arr.dtype.str.encode('utf-8')
-        data_b = arr.tobytes(order='C')
-        payload = []
-        payload.append(struct.pack("<B", len(dtype_s))); payload.append(dtype_s)
-        payload.append(struct.pack("<B", arr.ndim))
-        for d in arr.shape:
-            payload.append(struct.pack("<I", int(d)))
-        payload.append(struct.pack("<I", len(data_b))); payload.append(data_b)
-        return k, _T_NP, b"".join(payload)
-
-    # list / dict
-    if isinstance(val, (list, dict)):
-        jb = json.dumps(val, ensure_ascii=False).encode('utf-8')
-        return k, _T_JSON, struct.pack("<I", len(jb)) + jb
-
-    s = str(val).encode('utf-8')
-    return k, _T_STR, struct.pack("<I", len(s)) + s
-
-def pack_c2df(enc_result: dict, header: dict) -> bytes:
-    
-    blob = io.BytesIO()
-    # ---- Magic + ver ----
-    ver = int(header.get("version", 2))
-    blob.write(b"C2DF"); blob.write(struct.pack("<H", ver))
-
-    # ---- Header JSON ----
-    hb = json.dumps(header, ensure_ascii=False).encode('utf-8')
-    blob.write(struct.pack("<I", len(hb))); blob.write(hb)
-
-    # ---- Enc-Result ----
-    items = list(enc_result.items())
-    blob.write(struct.pack("<I", len(items)))
-
-    # ---- key_len | key | type | payload_len | payload ----
-    for k, v in items:
-        k_b, t, payload = _dump_entry(k, v)
-        blob.write(struct.pack("<H", len(k_b))); blob.write(k_b)
-        blob.write(struct.pack("<B", t))
-        if t in (_T_INT, _T_FLOAT, _T_BOOL, _T_NONE):
-            blob.write(payload)
-        else:
-            blob.write(struct.pack("<I", len(payload))); blob.write(payload)
-
-    return blob.getvalue()
+from filemaker import pack_c2df
 
 # ---------------- DDP helpers ----------------
 def is_dist():
@@ -166,7 +67,6 @@ class ClipCodec:
 
     @torch.no_grad()
     def image_to_unit_vec(self, img_tensor_CHW: torch.Tensor) -> np.ndarray:
-        """img_tensor_CHW: [-1,1] 範圍, CxHxW"""
         pil = transforms.ToPILImage()(img_tensor_CHW.clamp(-1,1).mul(0.5).add(0.5))
         x = self.preprocess(pil).unsqueeze(0).to(self.device)  # (1,3,224,224)
         z = self.model.encode_image(x).float()
