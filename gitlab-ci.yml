@@ -114,4 +114,4 @@ deploy:
       fi
     # - kubectl port-forward deploy/sic 8000:8000
   retry: 1
-  #
+  ##
