@@ -1,0 +1,116 @@
+stages:
+  # Build the Docker image from the GitHub repository
+  - build
+  # Deploy the updated image into your Kubernetes cluster
+  - deploy
+
+variables:
+  DOCKER_IMAGE: "sic"
+  IMAGE_TAG: "web"
+  GIT_DEPTH: "1"
+  CI_PROJECT_DIR: "Searchable-Generative-Image-Compression"
+  GITHUB_REPO_URL: "https://github.com/lionl1106/Searchable-Generative-Image-Compression.git"
+  DOCKER_USERNAME: lionl1106
+
+build:
+  stage: build
+  image: docker:27.2-cli
+  services:
+    - name: docker:27.2-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_BUILDKIT: "1"
+  rules:
+    - if: '$FORCE_BUILD == "1"' 
+    - changes:
+        - Dockerfile
+        - requirements.txt
+        - pyproject.toml
+        - package.json
+        - yarn.lock
+        - pnpm-lock.yaml
+    - when: never
+  script:
+    - echo ">> docker login to Docker Hub"
+    - docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" docker.io
+    - echo ">> build & push docker.io/lionl1106/sic:web"
+    - docker build -t docker.io/lionl1106/sic:web .
+    - docker push docker.io/lionl1106/sic:web
+    - echo "docker.io/lionl1106/sic:web" > image_ref.txt
+  artifacts:
+    paths: [image_ref.txt]
+    expire_in: 1 day
+
+deploy:
+  stage: deploy
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: [""]
+  needs:
+    - job: build
+      artifacts: true
+      optional: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+  before_script:
+    - kubectl version --client
+    - |
+      echo ">> Available contexts from injected KUBECONFIG:"
+      kubectl config get-contexts || true
+      if [ -z "$KUBE_CONTEXT" ]; then
+        KUBE_CONTEXT="$(kubectl config get-contexts -o name 2>/dev/null | grep -E ':sic-agent$' | head -n1)"
+      fi
+      if [ -z "$KUBE_CONTEXT" ]; then
+        KUBE_CONTEXT="$(kubectl config get-contexts -o name 2>/dev/null | head -n1)"
+      fi
+      if [ -z "$KUBE_CONTEXT" ]; then
+        echo "ERROR: No kube context found. Ensure agent ci_access is configured."; exit 1
+      fi
+      echo ">> Using context: $KUBE_CONTEXT"
+      kubectl config use-context "$KUBE_CONTEXT"
+      kubectl config current-context
+  script:
+    - NS="${K8S_NAMESPACE:-default}"
+    - DN="${DEPLOYMENT_NAME:-sic}"
+    - CN="${CONTAINER_NAME:-app}"
+    - |
+      if [ -z "$DN" ] || [ -z "$CN" ]; then
+        echo "ERROR: DEPLOYMENT_NAME or CONTAINER_NAME is empty (DN='$DN', CN='$CN')."; exit 1
+      fi
+
+    - IMAGE_REF="docker.io/lionl1106/sic:web"
+    - echo ">> Using IMAGE_REF=$IMAGE_REF"
+
+    - |
+      kubectl -n "$NS" patch deploy "$DN" -p '{
+        "spec": { "strategy": { "type": "Recreate" } }
+      }' || true
+
+    - |
+      if [ "$APPLY_MANIFEST" = "1" ] && [ -f k8s/deploy.yml ]; then
+        echo "[apply] k8s/deploy.yml with IMAGE_REF_PLACEHOLDER -> $IMAGE_REF"
+        sed "s#IMAGE_REF_PLACEHOLDER#${IMAGE_REF}#g" k8s/deploy.yml | kubectl -n "$NS" apply -f -
+      else
+        echo "[set-image] deploy/${DN} ${CN}=${IMAGE_REF}"
+        kubectl -n "$NS" set image "deploy/${DN}" "${CN}=${IMAGE_REF}"
+      fi
+
+    - kubectl -n "$NS" get deploy "$DN" -o=jsonpath='{.spec.template.spec.containers[?(@.name=="'"$CN"'")].image}{"\n"}'
+
+    - |
+      if ! kubectl -n "$NS" rollout status "deploy/${DN}" --timeout=300s; then
+        echo "Rollout not complete. Dumping diagnostics..."
+        echo "== Deployment ==" && kubectl -n "$NS" get deploy "$DN" -o wide
+        echo "== ReplicaSets ==" && kubectl -n "$NS" get rs -l app="${DN}" -o wide || true
+        echo "== Pods ==" && kubectl -n "$NS" get pods -l app="${DN}" -o wide || true
+        echo "== Events ==" && kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -n 80 || true
+        for p in $(kubectl -n "$NS" get pods -l app="${DN}" -o name); do
+          echo "--- $p ---"
+          kubectl -n "$NS" describe "$p" | sed -n '1,200p'
+        done
+        exit 1
+      fi
+    # - kubectl port-forward deploy/sic 8000:8000
+  retry: 1
