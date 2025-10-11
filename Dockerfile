@@ -21,8 +21,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY src/ /app/src
 
-# RUN mkdir -p /app/src/entropy
-
 # Compile c++ code
 ARG BUILD_TYPE=Release
 ENV CCACHE_DIR=/ccache CCACHE_MAXSIZE=5G PATH="/usr/lib/ccache:${PATH}"
