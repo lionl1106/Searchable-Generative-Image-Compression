@@ -11,16 +11,38 @@ variables:
   CI_PROJECT_DIR: "Searchable-Generative-Image-Compression"
   GITHUB_REPO_URL: "https://github.com/lionl1106/Searchable-Generative-Image-Compression.git"
   DOCKER_USERNAME: lionl1106
+  FORCE_BUILD: "0"
 
 build:
   stage: build
-  image: docker:27.2-cli
+  image: docker:24
   services:
-    - name: docker:27.2-dind
-      command: ["--tls=false"]
-  variables:
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_BUILDKIT: "1"
+    - name: docker:24-dind
+      command: ["--mtu=1400"]
+  script:
+    - echo "Cleaning workspace..."
+    - rm -rf ./*
+    - rm -rf ./.git*
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+    - echo "Cloning repository..."
+    - CLONE_DIR=$CI_PROJECT_DIR
+    - git clone --depth "${GIT_DEPTH:-1}" "$GITHUB_REPO_URL" $CI_PROJECT_DIR
+    - ls
+    - cd $CI_PROJECT_DIR
+    - ls
+
+    - test -f "./Dockerfile" || { echo "Dockerfile not found in $CI_PROJECT_DIR"; exit 1; }
+    - test -d "./static"     || { echo "static/ not found in $CI_PROJECT_DIR"; ls -al "$CI_PROJECT_DIR"; exit 1; }
+
+    - sed -i '/COPY checkpoints/d' Dockerfile
+
+    - docker build -t sic:web .
+
+    - docker tag sic:web lionl1106/sic:web
+
+    - docker push lionl1106/sic:web
+
   rules:
     - if: '$FORCE_BUILD == "1"' 
     - changes:
@@ -31,16 +53,7 @@ build:
         - yarn.lock
         - pnpm-lock.yaml
     - when: never
-  script:
-    - echo ">> docker login to Docker Hub"
-    - docker login -u "$DOCKER_USER" -p "$DOCKER_PASS" docker.io
-    - echo ">> build & push docker.io/lionl1106/sic:web"
-    - docker build -t docker.io/lionl1106/sic:web .
-    - docker push docker.io/lionl1106/sic:web
-    - echo "docker.io/lionl1106/sic:web" > image_ref.txt
-  artifacts:
-    paths: [image_ref.txt]
-    expire_in: 1 day
+
 
 deploy:
   stage: deploy
@@ -114,4 +127,3 @@ deploy:
       fi
     # - kubectl port-forward deploy/sic 8000:8000
   retry: 1
-  ##
