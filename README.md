@@ -1,4 +1,4 @@
-# Searchable-Generative-Image-Compression
+# Searchable-Generative-Image-Compression (Under development!!)
 A neural image compression codec that makes bitstreams searchable (by CLIP) and reconstructs with a generative decoder.
 
 ---
