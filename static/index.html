@@ -64,9 +64,39 @@ body::after{
   box-shadow: inset 0 1px rgba(255,255,255,.25);
 }
 
-  </style>
+  
+/* === Mouse-follow glow =============================================== */
+:root{
+  --mx: 50vw;           /* cursor x (fallback center) */
+  --my: 50vh;           /* cursor y (fallback center) */
+  --glow-inner: rgba(255,255,255,0.22);
+  --glow-mid:   rgba(255,255,255,0.08);
+}
+html[data-theme="night"]{
+  --glow-inner: rgba(160,200,255,0.25);
+  --glow-mid:   rgba(160,200,255,0.06);
+}
+#cursor-glow{
+  position: fixed; inset: 0;
+  z-index: 0;                /* above body::after (-1), below most content (auto/0 is fine) */
+  pointer-events: none;
+  mix-blend-mode: screen;    /* softly lightens underlying colors */
+  background:
+    radial-gradient(240px 240px at var(--mx) var(--my),
+      var(--glow-inner) 0%,
+      var(--glow-mid) 25%,
+      transparent 55%);
+  transition: background-position .08s linear;
+}
+@media (prefers-reduced-motion: reduce){
+  #cursor-glow{ display:none; }
+}
+
+</style>
 </head>
 <body class="min-h-screen bg-base-100 text-base-content">
+  <div id="cursor-glow" aria-hidden="true"></div>
+
   <div class="navbar glass-thick sticky top-0 z-10">
     <div class="flex-1 px-2 text-lg font-semibold">Searchable Generative Image Compression</div>
     <div class="flex-none">
@@ -343,5 +373,40 @@ body::after{
     if (e.currentTarget.getAttribute('aria-disabled') === 'true') e.preventDefault();
   });
   </script>
+
+<script>
+(function(){
+  const root = document.documentElement;
+  let tx = innerWidth * 0.5, ty = innerHeight * 0.5; // target
+  let x = tx, y = ty;                                 // current (smoothed)
+  let raf = null;
+
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  function loop(){
+    x = lerp(x, tx, 0.18);
+    y = lerp(y, ty, 0.18);
+    root.style.setProperty('--mx', x + 'px');
+    root.style.setProperty('--my', y + 'px');
+    raf = requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('pointermove', (e)=>{
+    tx = e.clientX; ty = e.clientY;
+    if (raf==null) raf = requestAnimationFrame(loop);
+  }, { passive: true });
+
+  // Recenter on resize
+  window.addEventListener('resize', ()=>{
+    tx = innerWidth * 0.5; ty = innerHeight * 0.5;
+  });
+
+  // Start with center glow so there's a subtle light even before moving
+  root.style.setProperty('--mx', tx + 'px');
+  root.style.setProperty('--my', ty + 'px');
+  raf = requestAnimationFrame(loop);
+})();
+</script>
+
 </body>
 </html>
