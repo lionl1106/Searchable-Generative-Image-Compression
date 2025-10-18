@@ -1,4 +1,4 @@
-import os, shutil, subprocess, uuid, zipfile
+import os, shutil, subprocess, uuid, zipfile, time, datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
@@ -7,6 +7,18 @@ from fastapi.staticfiles import StaticFiles
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+def _timing_headers(elapsed_ms: int, stage: str):
+    # Expose timing in headers (client reads via XHR)
+    return {
+        "X-SIC-Stage": stage,
+        "X-SIC-Elapsed-MS": str(int(elapsed_ms)),
+        "X-SIC-Elapsed-S": f"{elapsed_ms/1000:.3f}",
+        "X-SIC-Server-Clock": datetime.datetime.utcnow().isoformat() + "Z",
+        # allow browsers to read custom headers in XHR
+        "Access-Control-Expose-Headers": "X-SIC-Stage, X-SIC-Elapsed-MS, X-SIC-Elapsed-S, X-SIC-Server-Clock, Content-Disposition, Content-Type"
+    }
+
 
 @app.get("/")
 def home():
@@ -34,7 +46,10 @@ async def compress(file: UploadFile = File(...), bg: BackgroundTasks = None):
         "--gpu_idx",     os.getenv("GPU_IDX", "0"),
     ]
     try:
+        _t0 = time.perf_counter()
         subprocess.run(cmd, check=True)
+        _t1 = time.perf_counter()
+        _elapsed_ms = int((_t1 - _t0) * 1000)
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
 
@@ -48,7 +63,8 @@ async def compress(file: UploadFile = File(...), bg: BackgroundTasks = None):
         return FileResponse(
             path=str(out_path),
             filename=out_path.name,
-            media_type="application/octet-stream"
+            media_type="application/octet-stream",
+            headers=_timing_headers(_elapsed_ms, "compress")
         )
     else:
         zip_path = out_dir / f"{job}_c2df.zip"
@@ -59,7 +75,8 @@ async def compress(file: UploadFile = File(...), bg: BackgroundTasks = None):
         return FileResponse(
             path=str(zip_path),
             filename=zip_path.name,
-            media_type="application/zip"
+            media_type="application/zip",
+            headers=_timing_headers(_elapsed_ms, "compress")
         )
 
 @app.post("/decompress")
@@ -84,7 +101,10 @@ async def decompress(file: UploadFile = File(...), bg: BackgroundTasks = None):
         "--gpu_idx",     os.getenv("GPU_IDX", "0"),
     ]
     try:
+        _t0 = time.perf_counter()
         subprocess.run(cmd, check=True)
+        _t1 = time.perf_counter()
+        _elapsed_ms = int((_t1 - _t0) * 1000)
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
 
@@ -105,7 +125,8 @@ async def decompress(file: UploadFile = File(...), bg: BackgroundTasks = None):
         return FileResponse(
             path=str(out_path),
             filename=out_path.name,
-            media_type=mime
+            media_type=mime,
+            headers=_timing_headers(_elapsed_ms, "decompress")
         )
     else:
         zip_path = out_dir / f"{job}_decompressed.zip"
@@ -116,5 +137,6 @@ async def decompress(file: UploadFile = File(...), bg: BackgroundTasks = None):
         return FileResponse(
             path=str(zip_path),
             filename=zip_path.name,
-            media_type="application/zip"
+            media_type="application/zip",
+            headers=_timing_headers(_elapsed_ms, "decompress")
         )

@@ -206,6 +206,8 @@ html[data-theme="night"]{
   });
   const ENDPOINTS = { compress: '/compress', decompress: '/decompress' };
   const $ = (sel) => document.querySelector(sel);
+  const fmtMs = (ms)=> ms>=1000 ? (ms/1000).toFixed(2)+ ' s' : ms + ' ms';
+
   const prettyBytes = (n) => { if(n==null) return ''; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(n)/Math.log(1024)); return `${(n/1024**i).toFixed(1)} ${u[i]}`; };
   const filenameFromCD = (xhr) => {
     const cd = xhr.getResponseHeader('Content-Disposition') || '';
@@ -261,6 +263,7 @@ html[data-theme="night"]{
     img.onload = ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000);
   }
   async function postFile(kind) {
+    const tStart = performance.now();
     const isC = kind==='compress';
     const inp = isC? $('#fileCompress') : $('#fileDecompress');
     const prog= isC? $('#progC')        : $('#progD');
@@ -282,6 +285,11 @@ html[data-theme="night"]{
       }
     };
     xhr.onload = async () => {
+      const tEnd = performance.now();
+      const serverMs = parseInt(xhr.getResponseHeader('X-SIC-Elapsed-MS')||'0', 10);
+      const serverStage = xhr.getResponseHeader('X-SIC-Stage') || kind;
+      const endToEndMs = Math.max(0, Math.round(tEnd - tStart));
+
       prog.classList.add('hidden');
       if (xhr.status !== 200) {
         const fr = new FileReader();
@@ -298,9 +306,9 @@ html[data-theme="night"]{
         a.download = name.endsWith('.c2df') ? name : (name + '.c2df');
         setDownloadDisabled(a, false);
         a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
-        $('#status').textContent = `壓縮完成，請手動下載：${a.download}`;
+        $('#status').textContent = `壓縮完成（伺服器 ${fmtMs(serverMs)}；端到端 ${fmtMs(endToEndMs)}）：${a.download}`;
         panel.classList.remove('hidden');
-        panel.innerHTML = `<div class="alert alert-success">壓縮完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>`;
+        panel.innerHTML = `<div class="alert alert-success">壓縮完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>` + `<div class='mt-2 text-xs opacity-70'>耗時：伺服器 ${fmtMs(serverMs)}，端到端 ${fmtMs(endToEndMs)}</div>`;
       } else {
         const wrap = $('#previewDWrapper');
         const grid = $('#previewD');
@@ -314,7 +322,7 @@ html[data-theme="night"]{
           a.download = name.endsWith('.png') ? name : (name + '.png');
           setDownloadDisabled(a, false);
           a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
-          $('#status').textContent = '還原完成：預覽就緒（請手動下載）';
+          $('#status').textContent = `還原完成（伺服器 ${fmtMs(serverMs)}；端到端 ${fmtMs(endToEndMs)}）：預覽就緒（請手動下載）`;
         } else if (ctype.includes('zip')) {
           try {
             const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
@@ -347,7 +355,7 @@ html[data-theme="night"]{
           a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
         }
         panel.classList.remove('hidden');
-        panel.innerHTML = `<div class="alert alert-success">還原完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>`;
+        panel.innerHTML = `<div class="alert alert-success">還原完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>` + `<div class='mt-2 text-xs opacity-70'>耗時：伺服器 ${fmtMs(serverMs)}，端到端 ${fmtMs(endToEndMs)}</div>`;
       }
     };
     xhr.onerror = ()=> { prog.classList.add('hidden'); alert('網路錯誤或伺服器無回應'); };
