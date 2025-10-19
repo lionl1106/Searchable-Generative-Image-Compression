@@ -490,6 +490,7 @@ window.fmtMs = window.fmtMs || function(ms){ const n=Number(ms); if(!Number.isFi
 window.prettyBytes = window.prettyBytes || function(bytes){ const num=Number(bytes); if(!Number.isFinite(num))return''; const neg=num<0; let n=Math.abs(num); if(n<1024)return(neg?-n:n)+' B'; const u=['KB','MB','GB','TB','PB','EB','ZB','YB']; let i=-1; do{ n/=1024; ++i; }while(n>=1024 && i<u.length-1); return (neg?'-':'') + (n>=10?n.toFixed(0):n.toFixed(1)) + ' ' + u[i]; };
 
 const $s = (sel)=> document.querySelector(sel);
+const getVal = (sel)=> { const el = $s(sel); return el ? String(el.value).trim() : ""; };
 const topkRange = $s('#rangeTopK'); const topkVal = $s('#topkVal');
 topkRange.addEventListener('input', ()=> topkVal.textContent = topkRange.value);
 
@@ -555,31 +556,59 @@ async function onSearchTextStream(){
 }
 
 async function onSearchImageStream(){
-  const f = $s('#fileSearchImg').files?.[0]; if(!f){ alert('請選擇圖片'); return; }
-  const fd = new FormData(); fd.append('file', f); fd.append('topk', $s('#rangeTopK').value);
-  const idx = $s('#idxDir').value.trim(); if (idx) fd.append('index_dir', idx);
+  const f = $s('#fileSearchImg').files?.[0];
+  if(!f){ alert('請選擇圖片'); return; }
+
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('topk', $s('#rangeTopK').value);
+
+  const idx = getVal('#idxDir');
+  if (idx) fd.append('index_dir', idx);
+
   clearResults();
   let seen = 0; const t0 = performance.now();
   setSearchStatus('以圖搜圖中（串流）…');
-  await streamNDJSON(ENDPOINTS.search_image_stream, { method:'POST', body: fd }, (msg)=>{
-    if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
-    else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
-    else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
-  });
+
+  try{
+    await streamNDJSON(ENDPOINTS.search_image_stream, { method:'POST', body: fd }, (msg)=>{
+      if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
+      else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
+      else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
+    });
+  }catch(err){
+    console.error(err);
+    setSearchStatus('查詢失敗');
+    alert('查詢失敗：' + (err?.message || err));
+  }
 }
 
 async function onSearchC2DFStream(){
-  const f = $s('#fileSearchC2').files?.[0]; if(!f){ alert('請選擇 .c2df 檔'); return; }
-  const fd = new FormData(); fd.append('file', f); fd.append('topk', $s('#rangeTopK').value);
-  const idx = $s('#idxDir').value.trim(); if (idx) fd.append('index_dir', idx);
+  const f = $s('#fileSearchC2').files?.[0];
+  if(!f){ alert('請選擇 .c2df 檔'); return; }
+
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('topk', $s('#rangeTopK').value);
+
+  const idx = getVal('#idxDir');
+  if (idx) fd.append('index_dir', idx);
+
   clearResults();
   let seen = 0; const t0 = performance.now();
   setSearchStatus('.c2df 搜圖中（串流）…');
-  await streamNDJSON(ENDPOINTS.search_c2df_stream, { method:'POST', body: fd }, (msg)=>{
-    if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
-    else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
-    else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
-  });
+
+  try{
+    await streamNDJSON(ENDPOINTS.search_c2df_stream, { method:'POST', body: fd }, (msg)=>{
+      if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
+      else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
+      else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
+    });
+  }catch(err){
+    console.error(err);
+    setSearchStatus('查詢失敗');
+    alert('查詢失敗：' + (err?.message || err));
+  }
 }
 
 document.getElementById('btnSearchText').addEventListener('click', onSearchTextStream);
