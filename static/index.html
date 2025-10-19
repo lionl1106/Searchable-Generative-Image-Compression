@@ -12,7 +12,7 @@
     @keyframes fade { from {opacity:0} to {opacity:1} }
     .dropzone { cursor: pointer; }
   
-/* === Day / Night variables (預設=Day; night 覆寫) === */
+/* === Day / Night variables === */
 :root{
   --bg1:#eef3ff; --bg2:#fff1f7;
   --glass-bg: rgba(255,255,255,.55);
@@ -91,6 +91,11 @@ html[data-theme="night"]{
 @media (prefers-reduced-motion: reduce){
   #cursor-glow{ display:none; }
 }
+
+
+/* --- Masonry-like grid using CSS columns --- */
+.masonry{ column-gap: 1rem; }
+.masonry-item{ break-inside: avoid; margin-bottom: 1rem; }
 
 </style>
 </head>
@@ -191,7 +196,69 @@ html[data-theme="night"]{
         </div>
       </div>
     </aside>
-  </main>
+  
+<section id="searchSection" class="mt-10 space-y-6">
+  <article class="card glass-thick">
+    <div class="card-body space-y-4">
+      <header class="flex items-center gap-3">
+        <div class="btn btn-circle btn-accent btn-lg pointer-events-none">🔎</div>
+        <div>
+          <h3 class="card-title">語意檢索：以文 / 以圖 / 以 .c2df 搜圖</h3>
+          <p class="text-sm opacity-70">查詢會以 Google 圖片搜尋的方式呈現結果（瀑布流、懸浮顯示檔名與分數）。</p>
+        </div>
+      </header>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="md:col-span-2 space-y-3">
+          <div class="form-control">
+            <label class="label"><span class="label-text">以文字查圖</span></label>
+            <div class="join w-full">
+              <input id="txtQuery" type="text" class="input input-bordered join-item w-full" placeholder="例如：a red vintage car" />
+              <button id="btnSearchText" class="btn btn-accent join-item">搜尋</button>
+            </div>
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">以圖 / .c2df 查圖（拖放或點擊選擇）</span></label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div id="dzSearchImg" class="dropzone rounded-2xl p-5 text-center border border-base-content/20 hover:bg-accent/10 transition">
+                <p class="font-medium">圖片搜圖</p>
+                <p class="text-xs opacity-60">.png .jpg .jpeg .webp .bmp</p>
+                <input id="fileSearchImg" type="file" accept="image/*" class="hidden" />
+              </div>
+              <div id="dzSearchC2" class="dropzone rounded-2xl p-5 text-center border border-base-content/20 hover:bg-accent/10 transition">
+                <p class="font-medium">.c2df 搜圖</p>
+                <p class="text-xs opacity-60">只接受：.c2df</p>
+                <input id="fileSearchC2" type="file" accept=".c2df" class="hidden" />
+              </div>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button id="btnSearchImage" class="btn btn-outline">以圖搜尋</button>
+              <button id="btnSearchC2DF" class="btn btn-outline">以 .c2df 搜尋</button>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-3">
+          <label class="label"><span class="label-text">Top-K</span></label>
+          <input id="rangeTopK" type="range" min="1" max="50" value="12" class="range range-accent">
+          <div class="w-full flex justify-between text-xs px-1 opacity-70">
+            <span>1</span><span id="topkVal">12</span><span>50</span>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  </article>
+  <article class="card glass-thick">
+    <div class="card-body">
+      <header class="flex items-center gap-3 mb-2">
+        <h3 class="card-title">搜尋結果</h3>
+        <span id="searchStatus" class="text-sm opacity-70"></span>
+      </header>
+      <div id="gridResults" class="masonry columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5"></div>
+    </div>
+  </article>
+</section>
+
+</main>
   <script>
   (function initTheme(){
     const saved = localStorage.getItem('theme');
@@ -206,8 +273,6 @@ html[data-theme="night"]{
   });
   const ENDPOINTS = { compress: '/compress', decompress: '/decompress' };
   const $ = (sel) => document.querySelector(sel);
-  const fmtMs = (ms)=> ms>=1000 ? (ms/1000).toFixed(2)+ ' s' : ms + ' ms';
-
   const prettyBytes = (n) => { if(n==null) return ''; const u=['B','KB','MB','GB']; const i=Math.floor(Math.log(n)/Math.log(1024)); return `${(n/1024**i).toFixed(1)} ${u[i]}`; };
   const filenameFromCD = (xhr) => {
     const cd = xhr.getResponseHeader('Content-Disposition') || '';
@@ -239,6 +304,8 @@ html[data-theme="night"]{
   }
   bindDrop('#dzCompress', '#fileCompress', ['.png','.jpg','.jpeg','.webp','.bmp']);
   bindDrop('#dzDecompress', '#fileDecompress', ['.c2df']);
+  bindDrop('#dzSearchImg', '#fileSearchImg', ['.png','.jpg','.jpeg','.webp','.bmp']);
+  bindDrop('#dzSearchC2',  '#fileSearchC2',  ['.c2df']);
   function setDownloadDisabled(a, disabled) {
     if (disabled) {
       a.classList.add('btn-disabled');
@@ -263,7 +330,6 @@ html[data-theme="night"]{
     img.onload = ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000);
   }
   async function postFile(kind) {
-    const tStart = performance.now();
     const isC = kind==='compress';
     const inp = isC? $('#fileCompress') : $('#fileDecompress');
     const prog= isC? $('#progC')        : $('#progD');
@@ -285,11 +351,6 @@ html[data-theme="night"]{
       }
     };
     xhr.onload = async () => {
-      const tEnd = performance.now();
-      const serverMs = parseInt(xhr.getResponseHeader('X-SIC-Elapsed-MS')||'0', 10);
-      const serverStage = xhr.getResponseHeader('X-SIC-Stage') || kind;
-      const endToEndMs = Math.max(0, Math.round(tEnd - tStart));
-
       prog.classList.add('hidden');
       if (xhr.status !== 200) {
         const fr = new FileReader();
@@ -306,9 +367,9 @@ html[data-theme="night"]{
         a.download = name.endsWith('.c2df') ? name : (name + '.c2df');
         setDownloadDisabled(a, false);
         a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
-        $('#status').textContent = `壓縮完成（伺服器 ${fmtMs(serverMs)}；端到端 ${fmtMs(endToEndMs)}）：${a.download}`;
+        $('#status').textContent = `壓縮完成，請手動下載：${a.download}`;
         panel.classList.remove('hidden');
-        panel.innerHTML = `<div class="alert alert-success">壓縮完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>` + `<div class='mt-2 text-xs opacity-70'>耗時：伺服器 ${fmtMs(serverMs)}，端到端 ${fmtMs(endToEndMs)}</div>`;
+        panel.innerHTML = `<div class="alert alert-success">壓縮完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>`;
       } else {
         const wrap = $('#previewDWrapper');
         const grid = $('#previewD');
@@ -322,7 +383,7 @@ html[data-theme="night"]{
           a.download = name.endsWith('.png') ? name : (name + '.png');
           setDownloadDisabled(a, false);
           a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
-          $('#status').textContent = `還原完成（伺服器 ${fmtMs(serverMs)}；端到端 ${fmtMs(endToEndMs)}）：預覽就緒（請手動下載）`;
+          $('#status').textContent = '還原完成：預覽就緒（請手動下載）';
         } else if (ctype.includes('zip')) {
           try {
             const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
@@ -355,7 +416,7 @@ html[data-theme="night"]{
           a.addEventListener('click', ()=> setTimeout(()=>URL.revokeObjectURL(url), 3000), { once: true });
         }
         panel.classList.remove('hidden');
-        panel.innerHTML = `<div class="alert alert-success">還原完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>` + `<div class='mt-2 text-xs opacity-70'>耗時：伺服器 ${fmtMs(serverMs)}，端到端 ${fmtMs(endToEndMs)}</div>`;
+        panel.innerHTML = `<div class="alert alert-success">還原完成！<span class="ml-2 text-xs opacity-80">${a.download}</span></div>`;
       }
     };
     xhr.onerror = ()=> { prog.classList.add('hidden'); alert('網路錯誤或伺服器無回應'); };
@@ -386,7 +447,7 @@ html[data-theme="night"]{
 (function(){
   const root = document.documentElement;
   let tx = innerWidth * 0.5, ty = innerHeight * 0.5; // target
-  let x = tx, y = ty;                                 // current (smoothed)
+  let x = tx, y = ty;                                // current (smoothed)
   let raf = null;
 
   function lerp(a,b,t){ return a + (b-a)*t; }
@@ -415,6 +476,117 @@ html[data-theme="night"]{
   raf = requestAnimationFrame(loop);
 })();
 </script>
+
+<script>
+ENDPOINTS.search_text = '/search/text';
+ENDPOINTS.search_image = '/search/image';
+ENDPOINTS.search_c2df  = '/search/c2df';
+
+ENDPOINTS.search_text_stream  = '/search/stream/text';
+ENDPOINTS.search_image_stream = '/search/stream/image';
+ENDPOINTS.search_c2df_stream  = '/search/stream/c2df';
+
+window.fmtMs = window.fmtMs || function(ms){ const n=Number(ms); if(!Number.isFinite(n))return''; if(Math.abs(n)<1000)return `${Math.round(n)} ms`; const s=n/1000; return `${s.toFixed(s>=10?1:2)} s`; };
+window.prettyBytes = window.prettyBytes || function(bytes){ const num=Number(bytes); if(!Number.isFinite(num))return''; const neg=num<0; let n=Math.abs(num); if(n<1024)return(neg?-n:n)+' B'; const u=['KB','MB','GB','TB','PB','EB','ZB','YB']; let i=-1; do{ n/=1024; ++i; }while(n>=1024 && i<u.length-1); return (neg?'-':'') + (n>=10?n.toFixed(0):n.toFixed(1)) + ' ' + u[i]; };
+
+const $s = (sel)=> document.querySelector(sel);
+const topkRange = $s('#rangeTopK'); const topkVal = $s('#topkVal');
+topkRange.addEventListener('input', ()=> topkVal.textContent = topkRange.value);
+
+function setSearchStatus(s){ $s('#searchStatus').textContent = s; }
+function clearResults(){ $s('#gridResults').innerHTML=''; }
+function fmtScore(x){ if (x==null) return ''; const s=Number(x); return isFinite(s) ? s.toFixed(3) : ''; }
+
+function appendResultItem(it){
+  if (!it || !it.preview_url) return;
+  const grid = $s('#gridResults');
+  const a = document.createElement('a');
+  a.href = it.preview_url || '#'; a.target = '_blank'; a.rel='noreferrer noopener';
+  a.className = 'masonry-item block group relative rounded-xl overflow-hidden shadow';
+  const img = new Image(); img.src = it.preview_url || ''; img.alt = it.path || ''; img.loading='lazy';
+  img.className='w-full h-auto object-cover transition-transform duration-200 group-hover:scale-[1.02]';
+  const overlay = document.createElement('div');
+  overlay.className='pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity';
+  const label = document.createElement('div');
+  label.className='absolute bottom-0 left-0 right-0 p-2 text-[11px] text-white/90';
+  label.innerHTML = `<div class="flex items-center justify-between gap-2">
+    <span class="truncate">${(it.path||'').split(/[\\/]/).pop()}</span>
+    <span class="badge badge-sm badge-neutral">score ${fmtScore(it.score)}</span>
+  </div>`;
+  a.appendChild(img); a.appendChild(overlay); a.appendChild(label);
+  grid.appendChild(a);
+}
+
+async function streamNDJSON(url, fetchOpts, onLine){
+  const res = await fetch(url, fetchOpts);
+  if (!res.ok) throw new Error(await res.text());
+  if (!res.body) throw new Error('此瀏覽器不支援串流 Response.body');
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while(true){
+    const {done, value} = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, {stream:true});
+    let idx;
+    while((idx = buf.indexOf('\n')) >= 0){
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx+1);
+      if (!line) continue;
+      try{ onLine(JSON.parse(line)); }catch{/* ignore */ }
+    }
+  }
+}
+
+async function onSearchTextStream(){
+  const q = $s('#txtQuery').value.trim(); if(!q){ alert('請輸入文字'); return; }
+  const topk = +$s('#rangeTopK').value; const index_dir = undefined;
+  clearResults();
+  let seen = 0; const t0 = performance.now();
+  setSearchStatus('以文搜圖中（串流）…');
+  await streamNDJSON(ENDPOINTS.search_text_stream, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ text: q, topk, index_dir })
+  }, (msg)=>{
+    if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
+    else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
+    else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
+  });
+}
+
+async function onSearchImageStream(){
+  const f = $s('#fileSearchImg').files?.[0]; if(!f){ alert('請選擇圖片'); return; }
+  const fd = new FormData(); fd.append('file', f); fd.append('topk', $s('#rangeTopK').value);
+  const idx = $s('#idxDir').value.trim(); if (idx) fd.append('index_dir', idx);
+  clearResults();
+  let seen = 0; const t0 = performance.now();
+  setSearchStatus('以圖搜圖中（串流）…');
+  await streamNDJSON(ENDPOINTS.search_image_stream, { method:'POST', body: fd }, (msg)=>{
+    if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
+    else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
+    else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
+  });
+}
+
+async function onSearchC2DFStream(){
+  const f = $s('#fileSearchC2').files?.[0]; if(!f){ alert('請選擇 .c2df 檔'); return; }
+  const fd = new FormData(); fd.append('file', f); fd.append('topk', $s('#rangeTopK').value);
+  const idx = $s('#idxDir').value.trim(); if (idx) fd.append('index_dir', idx);
+  clearResults();
+  let seen = 0; const t0 = performance.now();
+  setSearchStatus('.c2df 搜圖中（串流）…');
+  await streamNDJSON(ENDPOINTS.search_c2df_stream, { method:'POST', body: fd }, (msg)=>{
+    if (msg.type === 'item'){ appendResultItem(msg); seen++; setSearchStatus(`已收到 ${seen} 筆…`); }
+    else if (msg.type === 'done'){ setSearchStatus(`完成：共 ${seen} 筆（${fmtMs(performance.now()-t0)}）`); }
+    else if (msg.type === 'error'){ setSearchStatus('查詢失敗'); alert('查詢失敗：'+msg.detail); }
+  });
+}
+
+document.getElementById('btnSearchText').addEventListener('click', onSearchTextStream);
+document.getElementById('btnSearchImage').addEventListener('click', onSearchImageStream);
+document.getElementById('btnSearchC2DF').addEventListener('click', onSearchC2DFStream);
+</script>
+
 
 </body>
 </html>

@@ -31,3 +31,4 @@ zstandard
 fastapi>=0.111
 uvicorn[standard]>=0.30
 python-multipart
+requests
